@@ -48,32 +48,97 @@ export function runAnalyses(
 }
 
 /**
- * Frequency distribution per categorical column. Drives Chapter 4.2 so
- * the model writes real demographic counts instead of `[Insert: …]`
- * placeholders. Sorted by count desc within each variable.
+ * Frequency distributions used by Chapter 4.2. Two sources:
+ *
+ *   1. Every categorical column (gender, faculty, etc. when stored as strings).
+ *   2. Numeric columns that look like coded categorical flags — e.g. gender
+ *      encoded as 0/1, or a marital_status field stored as 1/2/3. Detected by
+ *      low cardinality and a value pattern that isn't a Likert scale.
+ *
+ * True Likert items (integer values 1..N starting at 1 with 3+ levels) are
+ * deliberately excluded — they belong in 4.3+ analysis, not 4.2 demographics.
  */
 function runFrequencies(dataset: ParsedDataset): FrequencyDistribution[] {
   if (dataset.n === 0) return [];
-  return dataset.categoricals.map<FrequencyDistribution>((col) => {
-    const counts = new Map<string, number>();
-    let total = 0;
-    for (const row of dataset.rows) {
-      const v = row[col];
-      if (v === null || v === undefined) continue;
-      const key = String(v).trim();
-      if (key === "") continue;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      total++;
-    }
-    const rows = Array.from(counts.entries())
-      .map(([level, count]) => ({
-        level,
-        count,
-        percentage: total > 0 ? (count / total) * 100 : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
-    return { variable: col, n: total, rows };
-  });
+  const out: FrequencyDistribution[] = [];
+
+  for (const col of dataset.categoricals) {
+    out.push(tabulateCategorical(dataset, col));
+  }
+  for (const col of dataset.numerics) {
+    const tab = tabulateCodedNumeric(dataset, col);
+    if (tab) out.push(tab);
+  }
+  return out;
+}
+
+function tabulateCategorical(
+  dataset: ParsedDataset,
+  col: string,
+): FrequencyDistribution {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const row of dataset.rows) {
+    const v = row[col];
+    if (v === null || v === undefined) continue;
+    const key = String(v).trim();
+    if (key === "") continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    total++;
+  }
+  const rows = Array.from(counts.entries())
+    .map(([level, count]) => ({
+      level,
+      count,
+      percentage: total > 0 ? (count / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+  return { variable: col, n: total, rows };
+}
+
+/**
+ * Returns a frequency distribution for a numeric column iff it looks like a
+ * coded categorical flag rather than a continuous measure or Likert item.
+ */
+function tabulateCodedNumeric(
+  dataset: ParsedDataset,
+  col: string,
+): FrequencyDistribution | null {
+  const values: number[] = [];
+  for (const row of dataset.rows) {
+    const v = row[col];
+    if (typeof v === "number" && Number.isFinite(v)) values.push(v);
+  }
+  if (values.length === 0) return null;
+
+  // Must all be integers — non-integer values mean it's continuous.
+  if (!values.every((v) => Number.isInteger(v))) return null;
+
+  const unique = Array.from(new Set(values)).sort((a, b) => a - b);
+  // Only flag-shaped columns: 2 to 5 distinct integer values total.
+  if (unique.length < 2 || unique.length > 5) return null;
+
+  // Skip Likert: 3+ consecutive integers starting at 1.
+  const isConsecutiveFromOne =
+    unique[0] === 1 &&
+    unique.every((v, i) => v === unique[0] + i);
+  if (isConsecutiveFromOne && unique.length >= 3) return null;
+
+  // Build the distribution.
+  const counts = new Map<string, number>();
+  for (const v of values) {
+    const key = String(v);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const total = values.length;
+  const rows = Array.from(counts.entries())
+    .map(([level, count]) => ({
+      level,
+      count,
+      percentage: total > 0 ? (count / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+  return { variable: col, n: total, rows };
 }
 
 /**
