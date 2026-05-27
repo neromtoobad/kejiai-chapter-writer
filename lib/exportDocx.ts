@@ -36,6 +36,12 @@ export interface ExportDocxInput {
   chapterTitle?: string;
   /** Map of chart id → base64-encoded PNG (no data URL prefix). */
   chartImages?: Record<string, string>;
+  /**
+   * Map of chart id → SVG XML string. When present alongside the PNG,
+   * the docx embeds the vector SVG (with the PNG as the required
+   * fallback for older Word versions).
+   */
+  chartSvgs?: Record<string, string>;
 }
 
 // Word "twips" = 1/20 of a point. 1 inch = 1440 twips.
@@ -55,6 +61,7 @@ export async function exportToDocx(
   const children = parseChildren(
     input.markdown,
     input.chartImages ?? {},
+    input.chartSvgs ?? {},
   );
 
   const doc = new Document({
@@ -114,6 +121,7 @@ type DocChild = Paragraph | Table;
 function parseChildren(
   markdown: string,
   chartImages: Record<string, string>,
+  chartSvgs: Record<string, string>,
 ): DocChild[] {
   const out: DocChild[] = [];
   const lines = markdown.split("\n");
@@ -162,7 +170,7 @@ function parseChildren(
       continue;
     }
 
-    // Chart fence — render the PNG, drop the fence
+    // Chart fence — embed SVG (vector) with PNG fallback for older Word.
     if (/^\s*```chart\s*$/.test(line)) {
       const start = i + 1;
       let end = start;
@@ -170,7 +178,7 @@ function parseChildren(
         end++;
       }
       const json = lines.slice(start, end).join("\n");
-      const para = chartParagraph(json, chartImages);
+      const para = chartParagraph(json, chartImages, chartSvgs);
       if (para) out.push(para);
       i = end + 1;
       continue;
@@ -297,6 +305,7 @@ function heading(text: string, level: 1 | 2 | 3 | 4): Paragraph {
 function chartParagraph(
   json: string,
   chartImages: Record<string, string>,
+  chartSvgs: Record<string, string>,
 ): Paragraph | null {
   let spec: { id?: string } | null = null;
   try {
@@ -306,28 +315,63 @@ function chartParagraph(
   }
   if (!spec?.id) return null;
   const png = chartImages[spec.id];
-  if (!png) return null;
+  const svgXml = chartSvgs[spec.id];
+  if (!png && !svgXml) return null;
 
-  let imageBytes: Uint8Array;
-  try {
-    imageBytes = base64ToBytes(png);
-  } catch {
+  // PNG bytes are required either as the main image or as the fallback
+  // when SVG is the primary.
+  let pngBytes: Uint8Array | null = null;
+  if (png) {
+    try {
+      pngBytes = base64ToBytes(png);
+    } catch {
+      pngBytes = null;
+    }
+  }
+
+  const transformation = {
+    width: CHART_IMG_WIDTH_PX,
+    height: CHART_IMG_HEIGHT_PX,
+  };
+
+  // Prefer SVG (vector — crisp at any zoom in modern Word) and let docx
+  // fall back to PNG on older readers. If SVG is missing, fall back to
+  // PNG-only.
+  let imageRun: ImageRun;
+  if (svgXml && pngBytes) {
+    const svgBytes = new TextEncoder().encode(svgXml);
+    // docx's SVG ImageRun type isn't reflected in the v9 type definitions
+    // but the runtime accepts it. Cast through a permissive shape.
+    type SvgImageRunOpts = {
+      data: ArrayBuffer;
+      transformation: { width: number; height: number };
+      type: "svg";
+      fallback: { data: ArrayBuffer; type: "png" };
+    };
+    const opts: SvgImageRunOpts = {
+      data: svgBytes as unknown as ArrayBuffer,
+      transformation,
+      type: "svg",
+      fallback: {
+        data: pngBytes as unknown as ArrayBuffer,
+        type: "png",
+      },
+    };
+    imageRun = new ImageRun(
+      opts as unknown as ConstructorParameters<typeof ImageRun>[0],
+    );
+  } else if (pngBytes) {
+    imageRun = new ImageRun({
+      data: pngBytes as unknown as ArrayBuffer,
+      transformation,
+      type: "png",
+    });
+  } else {
     return null;
   }
 
   return new Paragraph({
-    children: [
-      new ImageRun({
-        // The `docx` types are awkward around image data; the runtime accepts
-        // a Uint8Array, which is what we have.
-        data: imageBytes as unknown as ArrayBuffer,
-        transformation: {
-          width: CHART_IMG_WIDTH_PX,
-          height: CHART_IMG_HEIGHT_PX,
-        },
-        type: "png",
-      }),
-    ],
+    children: [imageRun],
     alignment: AlignmentType.CENTER,
     spacing: { before: 120, after: 120 },
   });

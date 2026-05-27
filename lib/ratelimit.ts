@@ -1,17 +1,21 @@
 /**
- * KejiAI — minimal in-process rate limiter.
+ * KejiAI — rate limiter with two backends:
  *
- * Token-bucket per `key` with a fixed window. Defaults are tuned for a
- * public free deploy where each /api/generate call burns Claude tokens.
+ *   1. Upstash Redis (preferred) — distributed across all serverless
+ *      instances. Activated automatically when both
+ *      `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` env vars
+ *      are set.
  *
- * ⚠ Caveat: this is in-memory only. On Vercel each cold serverless instance
- *   has its own counter, so the effective ceiling is roughly
- *   `limit × concurrent_instances`. For low-to-moderate traffic that's
- *   acceptable for v1. For higher traffic, swap the buckets Map for an
- *   Upstash Redis / Vercel KV-backed store — the `rateLimit()` signature
- *   stays the same.
+ *   2. In-process token bucket (fallback) — works everywhere with no
+ *      setup, but each Vercel cold instance has its own counter, so the
+ *      effective ceiling is roughly `limit × concurrent_instances`.
+ *      Fine for low/moderate traffic; swap to Upstash for HA.
+ *
+ * Both backends share the `rateLimit(key, config)` signature.
  */
 
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 import { RATE_LIMITS } from "./constants";
 
 interface Bucket {
@@ -39,13 +43,79 @@ export interface RateLimitResult {
   limit: number;
 }
 
+// -- Upstash backend ---------------------------------------------------------
+
+interface UpstashLimiters {
+  redis: Redis;
+  /** Cache keyed by `${limit}:${windowMs}` so we reuse Ratelimit instances. */
+  limiters: Map<string, Ratelimit>;
+}
+
+let upstashState: UpstashLimiters | null = null;
+
+function getUpstash(): UpstashLimiters | null {
+  if (upstashState) return upstashState;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  upstashState = {
+    redis: new Redis({ url, token }),
+    limiters: new Map(),
+  };
+  return upstashState;
+}
+
+function getUpstashLimiter(
+  upstash: UpstashLimiters,
+  config: RateLimitConfig,
+): Ratelimit {
+  const cacheKey = `${config.limit}:${config.windowMs}`;
+  const existing = upstash.limiters.get(cacheKey);
+  if (existing) return existing;
+  // Fixed window matches our in-memory semantics exactly. Use a unique
+  // prefix per (limit, window) so different configs don't collide.
+  const limiter = new Ratelimit({
+    redis: upstash.redis,
+    limiter: Ratelimit.fixedWindow(config.limit, `${config.windowMs} ms`),
+    prefix: `kejiai:rl:${cacheKey}`,
+    analytics: false,
+  });
+  upstash.limiters.set(cacheKey, limiter);
+  return limiter;
+}
+
 /**
  * Returns the rate limit decision for `key`. Counts the current call against
  * the bucket when `ok` is true; rejected calls do not consume budget.
+ *
+ * Uses Upstash Redis when configured, in-memory otherwise.
  */
-export function rateLimit(
+export async function rateLimit(
   key: string,
   config: RateLimitConfig = RATE_LIMITS.generate,
+): Promise<RateLimitResult> {
+  const upstash = getUpstash();
+  if (upstash) {
+    try {
+      const limiter = getUpstashLimiter(upstash, config);
+      const result = await limiter.limit(key);
+      return {
+        ok: result.success,
+        remaining: result.remaining,
+        resetAt: result.reset,
+        limit: result.limit,
+      };
+    } catch {
+      // Fall through to in-memory if Upstash hiccups, so a transient
+      // Redis error doesn't take down /api/generate.
+    }
+  }
+  return rateLimitInMemory(key, config);
+}
+
+function rateLimitInMemory(
+  key: string,
+  config: RateLimitConfig,
 ): RateLimitResult {
   const now = Date.now();
   const existing = buckets.get(key);

@@ -10,6 +10,8 @@ interface ExportBody {
   filename?: string;
   /** Map of chart id → base64 PNG (with or without data: prefix). */
   chartImages?: Record<string, string>;
+  /** Map of chart id → SVG XML string. Preferred over PNG when present. */
+  chartSvgs?: Record<string, string>;
 }
 
 const MAX_MARKDOWN_CHARS = 200_000;
@@ -71,6 +73,7 @@ export async function POST(req: NextRequest) {
       markdown: body.markdown,
       chapterTitle: body.chapterTitle,
       chartImages: body.chartImages,
+      chartSvgs: body.chartSvgs,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Export failed";

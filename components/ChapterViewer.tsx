@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chart, parseChartSpec } from "@/components/Chart";
+import { trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type {
   AnalysisMappings,
@@ -397,6 +398,7 @@ function ChapterActions({
     if (ok) {
       setJustCopied(true);
       setTimeout(() => setJustCopied(false), 1800);
+      trackEvent("chapter_copied", { chapter: target });
     }
   };
 
@@ -405,15 +407,16 @@ function ChapterActions({
       new Blob([content], { type: "text/markdown;charset=utf-8" }),
       `${baseFilename}.md`,
     );
+    trackEvent("chapter_exported", { format: "md", chapter: target });
   };
 
   const handleDownloadDocx = async () => {
     setIsExportingDocx(true);
     setExportError(null);
     try {
-      // Rasterize each rendered chart's SVG to PNG so the docx can embed
-      // an image at the matching ```chart fence position.
-      const chartImages = await rasterizeChartsInArticle();
+      // Rasterize each chart to both SVG (vector) and PNG (fallback) so
+      // the docx export can prefer vector when Word supports it.
+      const { png, svg } = await rasterizeChartsInArticle();
       const res = await fetch("/api/export-docx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -421,7 +424,8 @@ function ChapterActions({
           markdown: content,
           chapterTitle: `${title} — Chapter ${target}`,
           filename: baseFilename,
-          chartImages,
+          chartImages: png,
+          chartSvgs: svg,
         }),
       });
       if (!res.ok) {
@@ -430,6 +434,7 @@ function ChapterActions({
       }
       const blob = await res.blob();
       triggerDownload(blob, `${baseFilename}.docx`);
+      trackEvent("chapter_exported", { format: "docx", chapter: target });
     } catch (err) {
       setExportError(err instanceof Error ? err.message : "Export failed");
       setTimeout(() => setExportError(null), 4000);
@@ -442,6 +447,7 @@ function ChapterActions({
     // The browser's print dialog has a "Save as PDF" destination on every
     // major OS. Cheaper than embedding a PDF library and produces the
     // cleanest output via our @media print stylesheet.
+    trackEvent("chapter_exported", { format: "pdf", chapter: target });
     window.print();
   };
 
@@ -503,32 +509,47 @@ function ChapterActions({
 // ===========================================================================
 
 /**
- * Walk every rendered `<figure data-chart-id>` in the article, rasterize its
- * inner SVG to a PNG base64 string, and return a map keyed by chart id.
+ * Walk every rendered `<figure data-chart-id>` and extract both an SVG
+ * string (vector — used in modern Word) and a PNG raster (fallback for
+ * older versions). The docx export route picks SVG when available with
+ * the PNG as the required fallback.
  *
- * Failures are non-fatal — a chart whose SVG can't be rasterized just gets
- * omitted from the docx (the markdown fence is dropped silently).
+ * Failures are non-fatal — a chart that can't be rasterized is just
+ * omitted from the docx; the markdown fence is dropped silently.
  */
-async function rasterizeChartsInArticle(): Promise<Record<string, string>> {
+async function rasterizeChartsInArticle(): Promise<{
+  png: Record<string, string>;
+  svg: Record<string, string>;
+}> {
   const figures = document.querySelectorAll<HTMLElement>(
     "article figure[data-chart-id]",
   );
-  const out: Record<string, string> = {};
+  const png: Record<string, string> = {};
+  const svg: Record<string, string> = {};
   await Promise.all(
     Array.from(figures).map(async (fig) => {
       const id = fig.dataset.chartId;
       if (!id) return;
-      const svg = fig.querySelector("svg");
-      if (!svg) return;
+      const svgEl = fig.querySelector("svg");
+      if (!svgEl) return;
       try {
-        const png = await svgToPng(svg, 1000, 560);
-        out[id] = png;
+        const xml = serializeSvg(svgEl);
+        svg[id] = xml;
+        const rasterized = await svgToPng(svgEl, 1000, 560);
+        png[id] = rasterized;
       } catch {
         // Skip this chart — docx export will lack this image.
       }
     }),
   );
-  return out;
+  return { png, svg };
+}
+
+function serializeSvg(svg: SVGSVGElement): string {
+  const xml = new XMLSerializer().serializeToString(svg);
+  return xml.includes("xmlns=")
+    ? xml
+    : xml.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
 }
 
 /** Convert an SVG element to a base64-encoded PNG at the requested size. */

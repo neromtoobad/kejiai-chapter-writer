@@ -93,14 +93,26 @@ User clicks Generate ─────► POST /api/generate
 - [x] Per-IP rate limiting on `/api/generate`
 - [x] Test scripts: `test-stats.ts`, `test-analyses.ts`, `test-prompt.ts`, `test-ratelimit.ts`
 
+## Optional env vars
+
+All of these are off until you set them. Add at Vercel deploy time.
+
+| Variable | What it does |
+|---|---|
+| `WEB_SEARCH_ENABLED` | When `"true"`, enables Claude's `web_search` tool so citations come from real published papers instead of plausible training-time names. |
+| `WEB_SEARCH_MAX_USES` | Cap on web searches per chapter (default `5`). |
+| `RATE_LIMIT_GENERATE_PER_HOUR` | Per-IP cap on `/api/generate` (default `10`). |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Switches the rate limiter to a distributed Redis-backed limiter. Highly recommended for any public deploy — the in-memory fallback only counts within a single serverless instance. |
+| `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN` | Enables Sentry error tracking. Source maps upload requires the auth token. |
+| `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` | Enables Plausible analytics. Set to your deployed domain. Tracks `file_parsed`, `generation_started`, `chapter_copied`, `chapter_exported`. |
+| `NEXT_PUBLIC_PLAUSIBLE_SCRIPT` | Override the script URL if you self-host Plausible (default `https://plausible.io/js/script.js`). |
+
 ## What's next
 
-- [ ] Real authors / fewer fabricated citations — switch to Claude's web search tool
-- [ ] Per-Likert-item text input so tables don't say "[Insert: adopt1 item text]"
-- [ ] Replace in-memory rate limiter with Upstash Redis for HA
-- [ ] Sentry / similar for error tracking
-- [ ] Analytics (Plausible)
-- [ ] Vector chart embedding in DOCX (currently PNG only)
+- [ ] Vector chart embedding in DOCX is shipped — modern Word uses the
+      embedded SVG; older versions fall back to the PNG.
+- [ ] Tests for the SVG export round-trip
+- [ ] OG image + favicon refresh for the deployed domain
 
 ---
 

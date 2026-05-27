@@ -18,40 +18,40 @@ function ok(cond: boolean, label: string) {
   }
 }
 
-console.log("\n[basic window]");
-__resetRateLimitForTests();
-const cfg = { limit: 3, windowMs: 60_000 };
-let r = rateLimit("a", cfg);
-ok(r.ok && r.remaining === 2, "1/3 allowed, 2 remain");
-r = rateLimit("a", cfg);
-ok(r.ok && r.remaining === 1, "2/3 allowed, 1 remain");
-r = rateLimit("a", cfg);
-ok(r.ok && r.remaining === 0, "3/3 allowed, 0 remain");
-r = rateLimit("a", cfg);
-ok(!r.ok && r.remaining === 0, "4th rejected");
-ok(r.resetAt > Date.now(), "resetAt in the future");
-
-console.log("\n[keys are isolated]");
-const r2 = rateLimit("b", cfg);
-ok(r2.ok && r2.remaining === 2, "different key has fresh budget");
-
-console.log("\n[rejection does not consume budget]");
-__resetRateLimitForTests();
-for (let i = 0; i < 3; i++) rateLimit("c", cfg);
-const before = rateLimit("c", cfg); // rejected
-const after = rateLimit("c", cfg); // also rejected, same resetAt
-ok(!before.ok && !after.ok, "both rejected");
-ok(before.resetAt === after.resetAt, "rejection does not move resetAt");
-
 async function main() {
+  console.log("\n[basic window]");
+  __resetRateLimitForTests();
+  const cfg = { limit: 3, windowMs: 60_000 };
+  let r = await rateLimit("a", cfg);
+  ok(r.ok && r.remaining === 2, "1/3 allowed, 2 remain");
+  r = await rateLimit("a", cfg);
+  ok(r.ok && r.remaining === 1, "2/3 allowed, 1 remain");
+  r = await rateLimit("a", cfg);
+  ok(r.ok && r.remaining === 0, "3/3 allowed, 0 remain");
+  r = await rateLimit("a", cfg);
+  ok(!r.ok && r.remaining === 0, "4th rejected");
+  ok(r.resetAt > Date.now(), "resetAt in the future");
+
+  console.log("\n[keys are isolated]");
+  const r2 = await rateLimit("b", cfg);
+  ok(r2.ok && r2.remaining === 2, "different key has fresh budget");
+
+  console.log("\n[rejection does not consume budget]");
+  __resetRateLimitForTests();
+  for (let i = 0; i < 3; i++) await rateLimit("c", cfg);
+  const before = await rateLimit("c", cfg);
+  const after = await rateLimit("c", cfg);
+  ok(!before.ok && !after.ok, "both rejected");
+  ok(before.resetAt === after.resetAt, "rejection does not move resetAt");
+
   console.log("\n[window resets after expiry]");
   __resetRateLimitForTests();
   const shortCfg = { limit: 1, windowMs: 50 };
-  rateLimit("d", shortCfg);
-  const blocked = rateLimit("d", shortCfg);
+  await rateLimit("d", shortCfg);
+  const blocked = await rateLimit("d", shortCfg);
   ok(!blocked.ok, "blocked while window open");
   await new Promise((r) => setTimeout(r, 80));
-  const fresh = rateLimit("d", shortCfg);
+  const fresh = await rateLimit("d", shortCfg);
   ok(fresh.ok && fresh.remaining === 0, "fresh budget after window expires");
 
   console.log("\n[formatRetryAfter]");
