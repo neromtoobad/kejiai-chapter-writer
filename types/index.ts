@@ -238,10 +238,24 @@ export interface AnalysisMappings {
   itemTexts?: Record<string, string>;
 }
 
+/** Frequency table for one categorical column. */
+export interface FrequencyDistribution {
+  variable: string;
+  /** Total non-null respondents counted. */
+  n: number;
+  /** Sorted by count descending. */
+  rows: Array<{ level: string; count: number; percentage: number }>;
+}
+
 /** Bundled output of `runAnalyses()`, consumed by `buildPrompt`. */
 export interface AnalysesBundle {
   reliability: ReliabilityResult[];
   hypotheses: HypothesisAnalysis[];
+  /**
+   * Frequency table per categorical column. Used by Chapter 4.2 so the
+   * model writes real demographic counts instead of `[Insert: frequency]`.
+   */
+  frequencies?: FrequencyDistribution[];
 }
 
 /* =========================================================================
