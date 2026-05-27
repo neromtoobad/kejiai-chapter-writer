@@ -375,7 +375,7 @@ ok(
   "Ch 4 instruction bans banding numeric age",
 );
 ok(
-  /You may \*\*NOT\*\* create.+demographic variables that are \*\*not\*\*/s.test(
+  /You may \*\*NOT\*\* create[\s\S]+demographic variables that are \*\*not\*\*/.test(
     ch4WithAnalyses,
   ),
   "Ch 4 instruction forbids inventing demographic sections",
