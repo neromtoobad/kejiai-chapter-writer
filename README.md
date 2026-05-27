@@ -1,36 +1,172 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KejiAI
 
-## Getting Started
+> **Real statistics. Real interpretation. No signup.**
+>
+> Upload your research data, describe the study, and receive a fully
+> written, APA-formatted academic chapter — calibrated to Nigerian
+> undergraduate, masters, or PhD conventions — in under 60 seconds.
 
-First, run the development server:
+KejiAI is a stateless web app for academic researchers. Students upload a
+CSV / Excel survey file, fill a short intake form, map columns to objectives
+and hypotheses, and the system streams a complete chapter back token-by-token
+with real Pearson r, t-test, ANOVA, chi-square, and Cronbach's α values
+computed from the uploaded data. Charts are auto-generated as embedded SVGs;
+the chapter exports as `.md`, `.docx`, or PDF (browser print).
+
+No accounts, no database, no payments. The dataset never leaves the request.
+
+---
+
+## Quick start
 
 ```bash
+git clone https://github.com/<your-org>/kejiai-chapter-writer.git
+cd kejiai-chapter-writer
+npm install
+# Create .env.local with: ANTHROPIC_API_KEY=sk-ant-…
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Verify the Claude connection
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+node --env-file=.env.local scripts/verify-claude.mjs
+```
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+User uploads CSV / Excel ──► POST /api/parse-data
+                              ├─ papaparse / xlsx
+                              ├─ computeStats() — descriptive stats
+                              └─ returns { dataset, stats, rawTable }
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+User maps columns → objectives + hypotheses (in browser)
 
-## Deploy on Vercel
+User clicks Generate ─────► POST /api/generate
+                              ├─ rateLimit per IP
+                              ├─ runAnalyses() — Cronbach α, Pearson r,
+                              │     Welch's t, one-way ANOVA, chi-square
+                              ├─ buildCharts() — chart specs as JSON
+                              ├─ buildPrompt() — system + user prompts
+                              │     with Nigerian academic style rules
+                              └─ Anthropic SDK stream → text/plain
+                                    ├─ ChapterViewer streams the markdown
+                                    ├─ ```chart fences render via Recharts
+                                    └─ Tables / headings / source lines
+                                       rendered in Nigerian project format
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS + shadcn/ui (editorial cream + amber accent)
+- **AI**: Anthropic Claude API (`claude-sonnet-4-20250514`) with streaming
+- **File parsing**: `xlsx` + `papaparse`
+- **Charts**: `recharts` (client) + custom server-side spec generator
+- **Markdown rendering**: `react-markdown` + `remark-gfm`
+- **DOCX export**: `docx`
+- **Rate limiting**: in-process token bucket (swap to Upstash for HA)
+- **Deployment**: Vercel (`vercel.json` pins `maxDuration: 90` on /api/generate)
+
+---
+
+## What's implemented
+
+- [x] CSV + Excel parsing with numeric / categorical column inference
+- [x] Descriptive statistics — mean, SD, min, max, skewness, kurtosis (SPSS conventions)
+- [x] Inferential statistics — Pearson r, Welch's t, one-way ANOVA, chi-square, OLS regression, Cronbach's α
+- [x] User-driven mapping UI: objectives ↔ Likert items, hypotheses ↔ variable pairs
+- [x] Server-side test inference (numeric × numeric → Pearson, cat × num → t / ANOVA, cat × cat → chi-square)
+- [x] Streaming chapter generation via Anthropic SDK
+- [x] Token-budget-controlled prompts (system ≤ 2000 tokens; total ≤ 4000)
+- [x] Nigerian academic style: Decision Rule, "From Table 4.X above", "Source: Field Survey", REJECTED phrasing, Yamane's formula, British spelling, named-stakeholder recommendations
+- [x] Auto-generated charts: demographic pies, Likert-item bar charts, scatter for Pearson, group bars for t / ANOVA
+- [x] `.md`, `.docx` (with embedded chart PNGs), PDF (browser print) export
+- [x] Per-IP rate limiting on `/api/generate`
+- [x] Test scripts: `test-stats.ts`, `test-analyses.ts`, `test-prompt.ts`, `test-ratelimit.ts`
+
+## What's next
+
+- [ ] Real authors / fewer fabricated citations — switch to Claude's web search tool
+- [ ] Per-Likert-item text input so tables don't say "[Insert: adopt1 item text]"
+- [ ] Replace in-memory rate limiter with Upstash Redis for HA
+- [ ] Sentry / similar for error tracking
+- [ ] Analytics (Plausible)
+- [ ] Vector chart embedding in DOCX (currently PNG only)
+
+---
+
+## Project layout
+
+```
+app/
+  api/
+    parse-data/      CSV/XLSX → dataset + descriptive stats
+    generate/        Stream Claude → markdown
+    export-docx/     Markdown + chart PNGs → .docx download
+  page.tsx           Intake page (client) — Step 01 / 02 / 03 / generate
+  generate/          (reserved for future dedicated generate route)
+  layout.tsx         Inter + Playfair Display + Geist Mono
+  globals.css        Cream palette + @media print
+
+components/
+  FileUpload.tsx        Drop zone + parse trigger
+  StatsSummary.tsx      N, variables, Likert candidates
+  AnalysisMapping.tsx   Map columns → objectives + hypotheses
+  IntakeForm.tsx        Title, level, objectives, hypotheses, …
+  ChapterViewer.tsx     Streaming markdown viewer + tabs + export buttons
+  Chart.tsx             Recharts renderer + parseChartSpec()
+  ui/                   shadcn primitives
+
+lib/
+  parseData.ts          CSV + XLSX parsers, type inference
+  computeStats.ts       All statistical tests (no third-party stats lib)
+  runAnalyses.ts        Routes mapped data into the right tests
+  buildPrompt.ts        System + user prompts with Nigerian style rules
+  buildCharts.ts        Chart specs (deterministic, no Claude tokens)
+  exportDocx.ts         Markdown → Word doc with embedded PNGs
+  ratelimit.ts          In-process token bucket
+  constants.ts          Likert thresholds, APA style, chapter structure, etc.
+  utils.ts              cn() helper
+
+types/index.ts          All domain + result types
+
+scripts/
+  test-stats.ts         Numerical assertions (Anscombe, SPSS reference values, …)
+  test-prompt.ts        Prompt-contract assertions
+  test-analyses.ts      Analyses-engine assertions
+  test-ratelimit.ts     Rate-limiter assertions
+  verify-claude.mjs     One-call live check of the Anthropic SDK
+```
+
+---
+
+## Deployment to Vercel
+
+```bash
+vercel env add ANTHROPIC_API_KEY production
+vercel deploy --prod
+```
+
+`vercel.json` pins `maxDuration: 90` on `/api/generate` so the stream isn't
+killed mid-chapter on the hobby plan.
+
+For production rate limiting, set:
+
+```bash
+RATE_LIMIT_GENERATE_PER_HOUR=20    # default: 10
+```
+
+---
+
+## License
+
+Private — no license file. All rights reserved.
