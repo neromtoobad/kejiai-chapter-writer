@@ -2,26 +2,185 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Editorial cream — warmer than pure white, easier on the eyes,
+       reads as "academic / publishing house" rather than "tech demo". */
+    --background: 38 30% 97.5%;
+    --foreground: 25 18% 12%;
+    --card: 36 35% 99%;
+    --card-foreground: 25 18% 12%;
+    --popover: 36 35% 99%;
+    --popover-foreground: 25 18% 12%;
+    --primary: 25 18% 12%;
+    --primary-foreground: 38 30% 97.5%;
+    --secondary: 36 20% 93%;
+    --secondary-foreground: 25 18% 12%;
+    --muted: 36 20% 93%;
+    --muted-foreground: 25 8% 40%;
+    --accent: 36 20% 93%;
+    --accent-foreground: 25 18% 12%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 38 30% 97.5%;
+    --border: 30 15% 85%;
+    --input: 30 15% 85%;
+    --ring: 30 70% 45%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11", "cv02"; /* refined Inter alts */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* A subtle radial wash at the top of the page — adds depth without
+     drawing attention. Read more as "warm paper" than "flat white". */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        hsl(35 50% 90% / 0.6),
+        transparent 60%
+      );
   }
 }
+
+/* Reusable utility: hairline divider with a center dot. Used in the hero. */
+.flourish {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: hsl(30 30% 60%);
+}
+.flourish::before,
+.flourish::after {
+  content: "";
+  height: 1px;
+  width: 3rem;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+/* ------------------------------------------------------------------
+ * Print styles — used when the user picks "PDF" (browser save-as-PDF).
+ * Hides app chrome, switches to Times New Roman 12pt double-spaced,
+ * justified text. Approximates a Nigerian project's printed appearance.
+ * ------------------------------------------------------------------ */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: "Times New Roman", Georgia, serif !important;
+    font-size: 12pt !important;
+    line-height: 2 !important;
+  }
+  /* Hide UI chrome */
+  header,
+  footer,
+  nav,
+  button,
+  [role="tablist"],
+  [data-print-hide] {
+    display: none !important;
+  }
+  /* Strip the chapter card frame */
+  article,
+  article * {
+    color: #000000 !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  /* The card wrapping the article — kill its borders/bg in print */
+  article {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  /* Headings */
+  article h1 {
+    font-size: 18pt !important;
+    text-align: center !important;
+    page-break-before: auto !important;
+    page-break-after: avoid !important;
+    margin-top: 0 !important;
+    margin-bottom: 18pt !important;
+  }
+  article h2 {
+    font-size: 14pt !important;
+    page-break-after: avoid !important;
+    margin-top: 18pt !important;
+  }
+  article h3 {
+    font-size: 12pt !important;
+    page-break-after: avoid !important;
+  }
+  /* Body */
+  article p,
+  article li {
+    font-size: 12pt !important;
+    line-height: 2 !important;
+    text-align: justify !important;
+  }
+  /* Tables */
+  article table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: avoid !important;
+    font-size: 11pt !important;
+  }
+  article th,
+  article td {
+    border: 1px solid #555 !important;
+    padding: 4pt 6pt !important;
+  }
+  /* Figures (charts) — keep together, no card background */
+  article figure {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    page-break-inside: avoid !important;
+    margin: 14pt 0 !important;
+  }
+  article figcaption {
+    color: #000000 !important;
+    font-size: 10pt !important;
+  }
+}
+
