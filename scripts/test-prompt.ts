@@ -347,6 +347,32 @@ ok(/From Table 4\.X above/.test(usr), "Ch 4 includes the 'From Table 4.X above�
 ok(/Decision Rule[\s\S]*p-value[\s\S]*< 0\.05/.test(usr), "Ch 4 emits the Decision Rule preamble");
 ok(/REJECTED|NOT REJECTED/.test(usr), "Ch 4 spells the canonical Nigerian decision verbs");
 
+console.log("\n[Demographic frequencies in Ch 4]");
+const ch4WithAnalyses = (() => {
+  // Build a quick AnalysesBundle with frequencies so we can verify the
+  // block renders. We don't run the full runAnalyses helper here — just
+  // hand-craft the FrequencyDistribution input.
+  const bundle = {
+    reliability: [],
+    hypotheses: [],
+    frequencies: [
+      {
+        variable: "gender",
+        n: 50,
+        rows: [
+          { level: "Female", count: 25, percentage: 50 },
+          { level: "Male", count: 25, percentage: 50 },
+        ],
+      },
+    ],
+  };
+  return buildUserPrompt(intake, dataset, stats, "4", bundle as never);
+})();
+ok(/Demographic Frequencies/.test(ch4WithAnalyses), "Ch 4 emits Demographic Frequencies header");
+ok(/\| Female \| 25 \| 50\.0 \|/.test(ch4WithAnalyses), "Ch 4 frequency row renders count + percentage");
+ok(/Do \*\*NOT\*\* invent age bands/.test(ch4WithAnalyses), "Ch 4 instruction bans inventing age bands");
+ok(/identifier columns/.test(ch4WithAnalyses), "Ch 4 instruction excludes identifier columns");
+
 console.log("\n[Ch5 — stakeholder recommendations]");
 const ch5 = buildUserPrompt(intake, dataset, stats, "5");
 ok(/The university management should/.test(ch5), "Ch 5 names 'The university management should…'");

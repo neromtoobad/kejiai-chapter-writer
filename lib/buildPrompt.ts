@@ -29,6 +29,7 @@ import type {
   AnalysesBundle,
   ChapterTarget,
   ChartSpec,
+  FrequencyDistribution,
   HypothesisAnalysis,
   IntakeFormData,
   ParsedDataset,
@@ -307,6 +308,10 @@ function computedStatisticsBlock(
     }
   }
 
+  if (analyses?.frequencies && analyses.frequencies.length > 0) {
+    lines.push(``, frequenciesBlock(analyses.frequencies));
+  }
+
   if (analyses && analyses.reliability.length > 0) {
     lines.push(``, reliabilityBlock(analyses.reliability, itemTexts));
   }
@@ -324,6 +329,31 @@ function computedStatisticsBlock(
     `Use the values above verbatim when writing the chapter. Do not invent additional cells, frequencies, or percentages — if a frequency count is needed and not provided, insert \`[Insert: <frequency required>]\`.`,
   );
 
+  return lines.join("\n");
+}
+
+function frequenciesBlock(
+  frequencies: FrequencyDistribution[],
+): string {
+  const lines: string[] = [
+    `## Demographic Frequencies (use verbatim for Section 4.2)`,
+    ``,
+    `These are the actual counts and percentages from the uploaded data. Use them in Chapter 4.2 frequency tables — do **NOT** invent categories, age bands, or counts. If a categorical variable below has a sensible demographic meaning (gender, faculty, level of study, marital status, etc.), include a numbered frequency table for it. Skip variables that are clearly identifiers.`,
+    ``,
+  ];
+  for (const f of frequencies) {
+    lines.push(`### ${cell(f.variable)} (n = ${f.n})`);
+    lines.push(``);
+    lines.push(`| ${cell(f.variable)} | Frequency | Percentage |`);
+    lines.push(`|---|---|---|`);
+    for (const r of f.rows) {
+      lines.push(
+        `| ${cell(r.level)} | ${r.count} | ${r.percentage.toFixed(1)} |`,
+      );
+    }
+    lines.push(`| **Total** | **${f.n}** | **100.0** |`);
+    lines.push(``);
+  }
   return lines.join("\n");
 }
 
@@ -563,7 +593,14 @@ function chapterInstructionBlock(
       const clusterCount = analyses?.reliability.length ?? 0;
       lines.push(
         ``,
-        `Build the analysis sections from the COMPUTED STATISTICS block. Open Chapter 4 with section **4.1 Introduction** (one short paragraph stating what the chapter covers), then **4.2 Demographic Profile of Respondents** (one or two frequency tables for categorical demographics like gender, age band, faculty, etc.).`,
+        `Build the analysis sections from the COMPUTED STATISTICS block. Open Chapter 4 with section **4.1 Introduction** (one short paragraph stating what the chapter covers), then **4.2 Demographic Profile of Respondents** using the **Demographic Frequencies** block.`,
+        ``,
+        `**STRICT rules for 4.2 Demographic Profile:**`,
+        `- Use ONLY the frequency tables in the "Demographic Frequencies" section of COMPUTED STATISTICS. Copy the counts and percentages verbatim. Add the caption "Table 4.X: <Description>" above each table and "*Source: Field Survey, ${new Date().getFullYear()}*" below.`,
+        `- Do **NOT** invent age bands or any other categorical bins. If "age" is a numeric column, report it as a single sentence — "The mean age of respondents was X.XX years (SD = Y.YY)" — using the descriptive stats. Do not band it into ranges and never write \`[Insert: frequency required]\` for invented bins.`,
+        `- Do **NOT** include frequency tables for identifier columns (e.g. \`id\`, \`respondent_id\`, \`serial_no\`).`,
+        `- If the Demographic Frequencies section is missing entirely, write one short paragraph summarising N and any reported demographics from RESEARCH CONTEXT instead.`,
+        ``,
         ``,
         `For each research objective, create a dedicated section (4.3, 4.4, …). Open each with the objective restated verbatim, e.g. **"Research Question 1: <objective text>"**. When a Likert cluster exists for that objective, name the specific items in prose and present a numbered table with the caption **"Table 4.X: <Cluster Description>"** above and **"*Source: Field Survey, ${new Date().getFullYear()}*"** below. The table uses the exact columns \`S/N | Item | SD | D | N | A | SA | Mean | SD | Decision\` filled from the per-item descriptive stats. State the grand mean and decision against the threshold.`,
         ``,

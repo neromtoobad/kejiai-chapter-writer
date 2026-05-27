@@ -22,6 +22,7 @@ import {
 import type {
   AnalysesBundle,
   AnalysisMappings,
+  FrequencyDistribution,
   HypothesisAnalysis,
   HypothesisSpec,
   HypothesisTestKind,
@@ -42,7 +43,37 @@ export function runAnalyses(
   return {
     reliability: runReliability(intake, dataset, mappings),
     hypotheses: runHypotheses(intake, dataset, mappings),
+    frequencies: runFrequencies(dataset),
   };
+}
+
+/**
+ * Frequency distribution per categorical column. Drives Chapter 4.2 so
+ * the model writes real demographic counts instead of `[Insert: …]`
+ * placeholders. Sorted by count desc within each variable.
+ */
+function runFrequencies(dataset: ParsedDataset): FrequencyDistribution[] {
+  if (dataset.n === 0) return [];
+  return dataset.categoricals.map<FrequencyDistribution>((col) => {
+    const counts = new Map<string, number>();
+    let total = 0;
+    for (const row of dataset.rows) {
+      const v = row[col];
+      if (v === null || v === undefined) continue;
+      const key = String(v).trim();
+      if (key === "") continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      total++;
+    }
+    const rows = Array.from(counts.entries())
+      .map(([level, count]) => ({
+        level,
+        count,
+        percentage: total > 0 ? (count / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+    return { variable: col, n: total, rows };
+  });
 }
 
 /**
