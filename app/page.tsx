@@ -6,6 +6,7 @@ import { ChapterViewer } from "@/components/ChapterViewer";
 import { FileUpload } from "@/components/FileUpload";
 import { IntakeForm, type FormErrors, type FormState } from "@/components/IntakeForm";
 import { StatsSummary } from "@/components/StatsSummary";
+import { trackEvent } from "@/lib/analytics";
 import type {
   AnalysisMappings,
   ChapterTarget,
@@ -130,6 +131,11 @@ export default function HomePage() {
       setStats(json.stats);
       setParsedFilename(file.name);
       setForm((f) => ({ ...f, sampleSize: String(json.dataset.n) }));
+      trackEvent("file_parsed", {
+        n: json.dataset.n,
+        numerics: json.dataset.numerics.length,
+        categoricals: json.dataset.categoricals.length,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Parse failed";
       setParseError(msg);
@@ -166,6 +172,13 @@ export default function HomePage() {
       mappings,
     });
     setIsGenerating(true);
+    trackEvent("generation_started", {
+      level: intake.level,
+      chapter: intake.chapterTarget,
+      hasFile: dataset !== null,
+      mappedObjectives: Object.keys(mappings.objectives).length,
+      mappedHypotheses: Object.keys(mappings.hypotheses).length,
+    });
     // Smooth-scroll to top so the chapter viewer enters at the top edge.
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });

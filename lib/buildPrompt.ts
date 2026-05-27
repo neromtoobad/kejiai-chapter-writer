@@ -147,11 +147,12 @@ export function buildUserPrompt(
   chapterTarget: ChapterTarget,
   analyses?: AnalysesBundle,
   charts?: ChartSpec[],
+  itemTexts?: Record<string, string>,
 ): string {
   const blocks = [
     researchContextBlock(intake, dataset),
     datasetSummaryBlock(dataset),
-    computedStatisticsBlock(stats, analyses),
+    computedStatisticsBlock(stats, analyses, itemTexts),
     chapterInstructionBlock(chapterTarget, intake, analyses),
     levelRulesBlock(intake.level),
   ];
@@ -170,6 +171,7 @@ export function buildPrompt(
   chapterTarget: ChapterTarget,
   analyses?: AnalysesBundle,
   charts?: ChartSpec[],
+  itemTexts?: Record<string, string>,
 ): { system: string; user: string } {
   return {
     system: buildSystemPrompt(intake.level),
@@ -180,6 +182,7 @@ export function buildPrompt(
       chapterTarget,
       analyses,
       charts,
+      itemTexts,
     ),
   };
 }
@@ -268,6 +271,7 @@ function datasetSummaryBlock(dataset: ParsedDataset): string {
 function computedStatisticsBlock(
   stats: StatResult[],
   analyses?: AnalysesBundle,
+  itemTexts?: Record<string, string>,
 ): string {
   const lines: string[] = [`# COMPUTED STATISTICS`, ``];
   if (stats.length === 0 && !analyses) {
@@ -304,11 +308,15 @@ function computedStatisticsBlock(
   }
 
   if (analyses && analyses.reliability.length > 0) {
-    lines.push(``, reliabilityBlock(analyses.reliability));
+    lines.push(``, reliabilityBlock(analyses.reliability, itemTexts));
   }
 
   if (analyses && analyses.hypotheses.length > 0) {
     lines.push(``, hypothesisTestsBlock(analyses.hypotheses));
+  }
+
+  if (itemTexts && Object.keys(itemTexts).length > 0) {
+    lines.push(``, itemWordingBlock(itemTexts));
   }
 
   lines.push(
@@ -319,7 +327,25 @@ function computedStatisticsBlock(
   return lines.join("\n");
 }
 
-function reliabilityBlock(reliability: ReliabilityResult[]): string {
+function itemWordingBlock(itemTexts: Record<string, string>): string {
+  const lines: string[] = [
+    `## Likert Item Wording`,
+    ``,
+    `Use the wording in the "Item" column of each Chapter 4 Likert table. Do NOT write \`[Insert: <column> item text]\` — the wording is provided here, verbatim.`,
+    ``,
+    `| Column | Item Wording |`,
+    `|---|---|`,
+  ];
+  for (const [col, text] of Object.entries(itemTexts)) {
+    lines.push(`| ${cell(col)} | ${cell(text)} |`);
+  }
+  return lines.join("\n");
+}
+
+function reliabilityBlock(
+  reliability: ReliabilityResult[],
+  itemTexts?: Record<string, string>,
+): string {
   const lines: string[] = [
     `## Reliability — Cronbach's α (per objective Likert cluster)`,
     ``,
@@ -327,7 +353,14 @@ function reliabilityBlock(reliability: ReliabilityResult[]): string {
     `|---|---|---|---|---|---|`,
   ];
   for (const r of reliability) {
-    const items = r.itemColumns.map(cell).join(", ") || "—";
+    const items =
+      r.itemColumns
+        .map((c) => {
+          const text = itemTexts?.[c];
+          return text ? `${c} ("${truncate(text, 35)}")` : c;
+        })
+        .map(cell)
+        .join(", ") || "—";
     const alpha =
       r.alpha === null || r.alpha === undefined ? "—" : r.alpha.toFixed(3);
     lines.push(

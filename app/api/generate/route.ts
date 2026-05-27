@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   // Per-IP rate limit — protects the Anthropic budget on a public deploy.
   // We check before parsing the body so abusive callers don't even allocate.
   const ip = getClientIp(req);
-  const rl = rateLimit(`gen:${ip}`, RATE_LIMITS.generate);
+  const rl = await rateLimit(`gen:${ip}`, RATE_LIMITS.generate);
   if (!rl.ok) {
     const retryAfterSec = Math.max(
       1,
@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
     body.chapterTarget,
     analyses,
     charts.length > 0 ? charts : undefined,
+    body.mappings?.itemTexts,
   );
 
   const encoder = new TextEncoder();
@@ -150,6 +151,26 @@ export async function POST(req: NextRequest) {
         }
       };
 
+      // Web search is opt-in via env var. When enabled, the model can
+      // search the web for real citations (peer-reviewed papers, Nigerian
+      // educational research, etc.) rather than relying on plausible
+      // training-time names. Pays in latency + tokens — worth it for
+      // academic integrity. Set WEB_SEARCH_ENABLED=true to turn it on;
+      // WEB_SEARCH_MAX_USES caps the number of searches per chapter.
+      const webSearchEnabled = process.env.WEB_SEARCH_ENABLED === "true";
+      const webSearchMaxUses = Number(
+        process.env.WEB_SEARCH_MAX_USES ?? 5,
+      );
+      const tools = webSearchEnabled
+        ? [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: webSearchMaxUses,
+            },
+          ]
+        : undefined;
+
       try {
         const sdkStream = client.messages.stream(
           {
@@ -157,6 +178,10 @@ export async function POST(req: NextRequest) {
             max_tokens: MAX_OUTPUT_TOKENS,
             system,
             messages: [{ role: "user", content: user }],
+            // The SDK type defs don't include the web_search tool yet;
+            // we pass it through as untyped extras since the runtime API
+            // accepts it.
+            ...(tools ? ({ tools } as Record<string, unknown>) : {}),
           },
           { signal: abortCtrl.signal },
         );

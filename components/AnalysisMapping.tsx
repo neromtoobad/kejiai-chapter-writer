@@ -75,6 +75,16 @@ export function AnalysisMapping({
     });
   };
 
+  const setItemText = (column: string, text: string) => {
+    onChange((prev) => {
+      const next = { ...(prev.itemTexts ?? {}) };
+      const trimmed = text.trim();
+      if (trimmed) next[column] = trimmed;
+      else delete next[column];
+      return { ...prev, itemTexts: next };
+    });
+  };
+
   const updateHypothesis = (
     hIdx: number,
     patch: Partial<HypothesisSpec>,
@@ -128,7 +138,9 @@ export function AnalysisMapping({
               text={obj}
               numerics={dataset.numerics}
               selected={value.objectives[i] ?? []}
+              itemTexts={value.itemTexts ?? {}}
               onToggle={(col) => toggleObjectiveItem(i, col)}
+              onItemText={(col, t) => setItemText(col, t)}
             />
           ))}
         </section>
@@ -169,13 +181,17 @@ function ObjectiveRow({
   text,
   numerics,
   selected,
+  itemTexts,
   onToggle,
+  onItemText,
 }: {
   index: number;
   text: string;
   numerics: string[];
   selected: string[];
+  itemTexts: Record<string, string>;
   onToggle: (column: string) => void;
+  onItemText: (column: string, text: string) => void;
 }) {
   return (
     <div className="space-y-2">
@@ -215,6 +231,29 @@ function ObjectiveRow({
       {selected.length === 1 && (
         <div className="font-mono text-[11px] text-muted-foreground">
           1 item selected · α needs at least 2
+        </div>
+      )}
+      {selected.length > 0 && (
+        <div className="mt-2 space-y-1.5 rounded border border-border/40 bg-muted/20 p-2.5">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            Item wording (optional, used in the Likert table)
+          </div>
+          <div className="space-y-1.5">
+            {selected.map((col) => (
+              <div key={col} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 font-mono text-[11px] text-amber-700">
+                  {col}
+                </span>
+                <input
+                  type="text"
+                  value={itemTexts[col] ?? ""}
+                  onChange={(e) => onItemText(col, e.target.value)}
+                  placeholder={`e.g. "I use ${col} platforms regularly"`}
+                  className="h-7 flex-1 rounded border border-border/50 bg-background px-2 text-xs focus:border-amber-500/60 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

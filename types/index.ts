@@ -230,6 +230,12 @@ export interface AnalysisMappings {
   objectives: Record<number, string[]>;
   /** hypothesisIndex → spec. */
   hypotheses: Record<number, HypothesisSpec>;
+  /**
+   * columnName → human-readable questionnaire item text.
+   * Optional — when present, the model uses the wording in Chapter 4
+   * Likert tables instead of the raw column name.
+   */
+  itemTexts?: Record<string, string>;
 }
 
 /** Bundled output of `runAnalyses()`, consumed by `buildPrompt`. */
