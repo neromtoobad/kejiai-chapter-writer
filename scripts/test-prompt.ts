@@ -370,8 +370,23 @@ const ch4WithAnalyses = (() => {
 })();
 ok(/Demographic Frequencies/.test(ch4WithAnalyses), "Ch 4 emits Demographic Frequencies header");
 ok(/\| Female \| 25 \| 50\.0 \|/.test(ch4WithAnalyses), "Ch 4 frequency row renders count + percentage");
-ok(/Do \*\*NOT\*\* invent age bands/.test(ch4WithAnalyses), "Ch 4 instruction bans inventing age bands");
-ok(/identifier columns/.test(ch4WithAnalyses), "Ch 4 instruction excludes identifier columns");
+ok(
+  /Do not band it into age groups/.test(ch4WithAnalyses),
+  "Ch 4 instruction bans banding numeric age",
+);
+ok(
+  /You may \*\*NOT\*\* create.+demographic variables that are \*\*not\*\*/s.test(
+    ch4WithAnalyses,
+  ),
+  "Ch 4 instruction forbids inventing demographic sections",
+);
+ok(
+  /You may \*\*NOT\*\* write `\[Insert: <X> frequency distribution required\]`/.test(
+    ch4WithAnalyses,
+  ),
+  "Ch 4 instruction explicitly bans [Insert: …] for whole demographic tables",
+);
+ok(/identifier columns/i.test(ch4WithAnalyses), "Ch 4 instruction excludes identifier columns");
 
 console.log("\n[Ch5 — stakeholder recommendations]");
 const ch5 = buildUserPrompt(intake, dataset, stats, "5");
